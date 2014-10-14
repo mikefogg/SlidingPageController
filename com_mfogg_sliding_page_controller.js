@@ -7,14 +7,14 @@ var sliding_page_controller = function(opts){
   var options = {
     height: (opts.height || Ti.Platform.displayCaps.platformHeight),
     width: (opts.width || Ti.Platform.displayCaps.platformWidth),
-    pages: (opts.pages || []),
+    speed: (opts.speed || 2),
+    slides: (opts.slides || []),
     initialPage: (opts.initialPage || 0),
     disableBounce: (opts.disableBounce || false),
-    nav: {
-      height: (opts.nav.height || 70),
-      backgroundColor: (opts.nav.backgroundColor || "#000"),
-      color: (opts.nav.color || "#fff")
-    }
+    showPagingControl: (opts.showPagingControl || false),
+    pagingControlColor: (opts.pagingControlColor || "#fff"),
+    pagingControlBottom: (opts.pagingControlBottom || 20),
+    pagingControlOpacity: (opts.pagingControlOpacity || 1.0)
   };
 
   //
@@ -31,183 +31,151 @@ var sliding_page_controller = function(opts){
   // Store these for access later!
   //
 
-  var navigationViews = [];
-  var contentViews = [];
+  var backgroundViews = [];
+  var mainViews = [];
 
   //
-  // Navigation Header
+  // Background Scroll View
   //
 
-  var nav = Ti.UI.createView({
-    backgroundColor: options.nav.backgroundColor,
-    top: 0,
-    height: options.nav.height,
-    opacity: 0.0,
-    left: 0,
-    right: 0
+  var background_scroll_view = Ti.UI.createScrollView({
+    height: options.height,
+    width: options.width,
+    contentWidth: 'auto',
+    contentHeight: 'auto',
+    // layout: "horizontal",
+    scrollType: "horizontal",
+    showVerticalScrollIndicator: true,
+    showHorizontalScrollIndicator: true,
+    scrollingEnabled: false
   });
-
-    var nav_scroll_view = Ti.UI.createScrollView({
-      height: (options.nav.height-30),
-      bottom: 5,
-      left: 0,
-      right: 0,
-      contentWidth: 'auto',
-      contentHeight: 'auto',
-      layout: "horizontal",
-      scrollType: "horizontal",
-      showVerticalScrollIndicator: true,
-      showHorizontalScrollIndicator: true,
-      scrollingEnabled: false
-    });
-
-    nav_scroll_view.addEventListener("click", function(e){
-      if(e.source && e.source.viewIndex != null){
-        navigationViews[self.currentPage].animate({
-          opacity: 0.25,
-          duration: 350
-        });
-
-        self.scrollToPage(e.source.viewIndex);
-      };
-    });
-
-    nav.add(nav_scroll_view);
 
   //
   // Content Body
   //
 
-  var scrollable_view = Ti.UI.createScrollableView({
-    views:[],
-    top: options.nav.height,
-    bottom: 0,
-    showPagingControl:false,
+  var main_scroll_view = Ti.UI.createScrollableView({
+    views: [],
+    showPagingControl: false,
     disableBounce: options.disableBounce
+  });
+
+  //
+  // Dot area
+  //
+  var dots = [];
+
+  var dot_view = Ti.UI.createView({
+    bottom: options.pagingControlBottom,
+    width: Ti.UI.SIZE,
+    layout: "horizontal",
+    height: 12,
+    opacity: options.pagingControlOpacity,
+    currentPage: 0
   });
 
   //
   // Add the views to the controller
   //
 
-  self.add(scrollable_view);
-  self.add(nav);
+  self.add(background_scroll_view);
+  self.add(main_scroll_view);
+
+  if(options.showPagingControl){
+    self.add(dot_view);
+  };
 
   //
-  //  controller.addPage(opts);
+  //  controller.addSlide(opts);
   //
   //  Example: 
   //  
-  //  controller.addPage({
+  //  controller.addSlide({
   //    title: "Page Title",  // Required
   //    page: view,           // Required
   //    scrollTo: true        // Optional (Default: false)
   //  });
 
-  self.addPage = function(params){
-    if(!params.page || !params.title){
-      Ti.API.error("Attempted to add a view to the sliding page controller with no title or view... ignoring");
-      return;
-    };
-
+  self.addSlide = function(params){
     // How many views exist currently?
-    var i = scrollable_view.views.length;
+    var i = main_scroll_view.views.length;
 
     // Create the page header
-    var left = (i==0 ? (options.width/4) : 0);
+    var left = (i==0 ? 0 : (options.speed*(options.width*i)));
 
-    var nav_page_view = Ti.UI.createView({
-      height: (options.nav.height-30),
-      bottom: 5,
+    var background_view_container = Ti.UI.createView({
       left: left,
-      right: 0,
-      width: (options.width/2),
-      opacity: 0.25,
-      viewIndex: i
+      width: options.width
     });
 
-      nav_page_view.nav_page_title_view = Ti.UI.createView({
-        height: (options.nav.height-30),
-        left: 10,
-        right: 10,
-        touchEnabled: false
-      });
+    background_view_container.add(params.backgroundView);
 
-        nav_page_view.nav_page_title = Ti.UI.createLabel({
-          text: params.title,
-          font: { fontSize: 16, fontWeight: "bold" },
-          color: options.nav.color,
-          textAlign: "center",
-          touchEnabled: false
-        });
-
-        nav_page_view.nav_page_title_view.add(nav_page_view.nav_page_title);
-
-      nav_page_view.add(nav_page_view.nav_page_title_view);
-
-    nav_scroll_view.add(nav_page_view);
+    // Create the slide background
+    background_scroll_view.add(background_view_container);
 
     // Create the page body
-    scrollable_view.addView(params.page);
+    main_scroll_view.addView(params.mainView);
 
     // Add this to lists to track later
-    navigationViews.push(nav_page_view);
-    contentViews.push(params.page);
+    backgroundViews.push(background_view_container);
+    mainViews.push(params.page);
 
     // Scroll to it if we want
     if(params.scrollTo){
       setTimeout(function(){
-        self.scrollToPage(i);
+        self.setPage(i, {animated: true});
       }, 300);
     };
   };
 
   //
-  //  controller.scrollToPage(index);
+  //  controller.scrollToNextPage(params);
   //
   //  Example: 
   //  
-  //  controller.scrollToPage(0);
+  //  controller.scrollToNextPage({animated: true});
 
-  self.scrollToPage = function(index){
-    if(index == self.currentPage){ return; };
+  self.setNextPage = function(params){
+    if((self.currentPage+1) == mainViews.length){ return; };
 
-    var left = ((options.width/2)*index);
-    if(index == 0){ left = 0 };
-
-    nav_scroll_view.scrollTo(left, 0);
-
-    scrollable_view.scrollToView(index);
-
-    self.currentPage = index;
-
-    setTimeout(function(){
-      navigationViews[index].animate({
-        opacity: 1.0,
-        duration: 200
-      }, function(){
-        self.fireEvent("pagechange", { currentPage: index });
-      });
-    }, 100);
+    self.setPage((self.currentPage+1), params);
   };
 
   //
-  //  setPage(index, callback);
+  //  setPage(index, params, callback);
   //
   //  Example: 
   //  
-  //  controller.setPage(0, function(){ alert("Page Set!"); });
+  //  controller.setPage(0, {animated: false}, function(){ alert("Page Set!"); });
 
-  self.setPage = function(index, callback){
+  self.setPage = function(index, params, callback){
     if(index == self.currentPage){ return; };
 
-    self.setNavInset(index);
+    var params = (params || {animated: false});
 
-    scrollable_view.setCurrentPage(index);
+    if(!params.animated){
+      self.setNavInset(index);
+      main_scroll_view.setCurrentPage(index);
+    } else {
+      var left = ((options.width*options.speed)*index);
+      if(index == 0){ left = 0 };
+      background_scroll_view.scrollTo(left, 0);
+      main_scroll_view.scrollToView(index);
+    };
+
     self.currentPage = index;
 
+    // Change the dots
+    for(var i=0;i<dots.length;i++){
+      if(i != index){
+        dots[i].opacity = .25;
+      } else {
+        dots[i].opacity = 1.0;
+      };
+    };
+
     setTimeout(function(){
-      navigationViews[index].animate({
+      backgroundViews[index].animate({
         opacity: 1.0,
         duration: 200
       }, function(){
@@ -228,10 +196,10 @@ var sliding_page_controller = function(opts){
   //  controller.setNavInset(1);
 
   self.setNavInset = function(index){
-    var left = ((options.width/2)*index);
+    var left = ((options.width*options.speed)*index);
     if(index == 0){ left = 0 };
 
-    nav_scroll_view.setContentOffset({x:left, y:0}, {animated:false});
+    background_scroll_view.setContentOffset({x:left, y:0}, {animated:false});
   };
 
   //
@@ -247,26 +215,41 @@ var sliding_page_controller = function(opts){
     // Initialize the current views you're adding
     //
 
-    for(var i=0;i<options.pages.length;i++){
-      self.addPage({
-        title: options.pages[i].title,
-        page: options.pages[i].page
+    for(var i=0;i<options.slides.length;i++){
+      self.addSlide({
+        caption: options.slides[i].caption,
+        backgroundView: options.slides[i].backgroundView,
+        mainView: options.slides[i].mainView
       });
+
+      // Add the dots!
+      var dot = Ti.UI.createView({
+        height: 8,
+        width: 8,
+        left: 3,
+        backgroundColor: options.pagingControlColor,
+        opacity: 0.25,
+        borderRadius: 4,
+        right: 1
+      });
+
+      dots.push(dot);
+      dot_view.add(dots[i]);
     };
 
     // Set the initial page :)
-    self.setPage(options.initialPage, function(){
+    self.setPage(options.initialPage, {animated: false}, function(){
 
       self.setNavInset(options.initialPage);
 
-      nav.animate({
+      background_scroll_view.animate({
         opacity: 1.0,
         duration: 200
       });
 
-      scrollable_view.addEventListener("scroll", function(e){
-        var left = ((options.width/2)*e.currentPageAsFloat);
-        nav_scroll_view.setContentOffset({x:left, y:0}, {animated:false});
+      main_scroll_view.addEventListener("scroll", function(e){
+        var left = ((options.width*options.speed)*e.currentPageAsFloat);
+        background_scroll_view.setContentOffset({x:left, y:0}, {animated:false});
 
         var opacity = (1-(2*(e.currentPage - e.currentPageAsFloat)));
 
@@ -274,11 +257,11 @@ var sliding_page_controller = function(opts){
           opacity = (1+(2*(e.currentPage - e.currentPageAsFloat)))
         };
 
-        navigationViews[e.currentPage].opacity = Math.max(opacity, .25);
+        backgroundViews[e.currentPage].opacity = Math.max(opacity, 0);
       });
 
-      scrollable_view.addEventListener("scrollend", function(e){
-        self.scrollToPage(e.currentPage);
+      main_scroll_view.addEventListener("scrollend", function(e){
+        self.setPage(e.currentPage, {animated: true});
       });
 
     });
